@@ -4,6 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Lekker Restaurant Group</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     :root {
       --green: #1a3c2e;
@@ -312,6 +313,38 @@
     }
     .toast.show { transform: translateY(0); opacity: 1; }
 
+  /* ===== CONFIRMATION PAGE ===== */
+  .confirmation-card {
+    max-width: 620px; margin: 3rem auto; background: white;
+    border-radius: 20px; padding: 2.5rem; box-shadow: 0 8px 32px var(--shadow-md);
+  }
+  .confirmation-header { text-align: center; margin-bottom: 2rem; }
+  .confirmation-header .check-circle {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: #d1fae5; display: flex; align-items: center;
+    justify-content: center; font-size: 2rem; margin: 0 auto 1rem;
+  }
+  .confirmation-header h2 { color: var(--green); font-size: 1.5rem; margin-bottom: 0.3rem; }
+  .confirmation-header p { color: var(--text-light); font-size: 0.9rem; }
+  .invoice-meta { background: var(--blue-soft); border-radius: 12px; padding: 1rem 1.2rem; margin-bottom: 1.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .invoice-meta-item .label { font-size: 0.75rem; color: var(--text-light); font-weight: 600; text-transform: uppercase; }
+  .invoice-meta-item .value { font-size: 0.92rem; font-weight: 700; color: var(--text); margin-top: 0.1rem; }
+  .invoice-items { margin-bottom: 1.5rem; }
+  .invoice-items-title { font-size: 0.85rem; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.8rem; }
+  .invoice-row { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+  .invoice-row:last-child { border-bottom: none; }
+  .invoice-row .item-left { display: flex; align-items: center; gap: 0.6rem; }
+  .invoice-row .item-qty { background: var(--blue-mid); color: var(--blue); border-radius: 6px; padding: 0.15rem 0.5rem; font-size: 0.78rem; font-weight: 700; }
+  .invoice-totals { background: var(--beige); border-radius: 12px; padding: 1rem 1.2rem; margin-bottom: 1.5rem; }
+  .invoice-total-row { display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.3rem 0; color: var(--text-light); }
+  .invoice-total-row.grand { color: var(--text); font-weight: 700; font-size: 1.1rem; border-top: 2px solid var(--beige-dark); margin-top: 0.4rem; padding-top: 0.6rem; }
+  .confirmation-btns { display: flex; gap: 1rem; }
+  .confirmation-btns button { flex: 1; padding: 0.9rem; border-radius: 12px; font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: all 0.2s; border: none; }
+  .btn-download { background: var(--green); color: white; }
+  .btn-download:hover { background: var(--green-light); }
+  .btn-track { background: var(--blue); color: white; }
+  .btn-track:hover { background: var(--blue-light); }
+    
     /* ===== FOOTER ===== */
     footer {
       background: var(--green); color: rgba(255,255,255,0.7);
@@ -713,18 +746,153 @@
 
   // ======= ORDER =======
   function placeOrder() {
-    if (Object.keys(cart).length === 0) { showToast('⚠️ Your cart is empty!'); return; }
-    if (!selectedLocation) {
-      document.getElementById('locWarning').style.display = 'block';
-      document.getElementById('loc-maastricht').scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
-    const orderId = 'LRG-' + Math.floor(1000 + Math.random() * 9000);
-    showToast('🎉 Order placed! Thank you!');
-    const loc = locations[selectedLocation];
-    cart = {}; updateCartCount();
-    setTimeout(() => { showPage('tracking'); startTracking(orderId, loc); }, 800);
+  if (Object.keys(cart).length === 0) { showToast('⚠️ Your cart is empty!'); return; }
+  if (!selectedLocation) {
+    document.getElementById('locWarning').style.display = 'block';
+    document.getElementById('loc-maastricht').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
   }
+  const orderId = 'LRG-' + Math.floor(1000 + Math.random() * 9000);
+  const loc = locations[selectedLocation];
+  const now = new Date();
+  const payEl = document.querySelector('.pay-opt.selected');
+  const payMethod = payEl ? payEl.textContent.trim() : 'iDEAL';
+  const isDelivery = document.getElementById('opt-delivery').classList.contains('selected');
+  const deliveryFee = isDelivery ? 2.50 : 0;
+  const keys = Object.keys(cart);
+  const sub = keys.reduce((s, k) => s + menuData.find(i => i.id == k).price * cart[k], 0);
+
+  // Save order snapshot
+  window.currentOrder = { orderId, loc, now, payMethod, isDelivery, deliveryFee, sub, cartSnapshot: {...cart} };
+
+  // Fill confirmation page
+  document.getElementById('conf-orderid').textContent   = orderId;
+  document.getElementById('conf-datetime').textContent  = now.toLocaleDateString('en-GB') + '  ' + now.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+  document.getElementById('conf-location').textContent  = loc.name;
+  document.getElementById('conf-payment').textContent   = payMethod;
+  document.getElementById('conf-sub').textContent       = '€' + sub.toFixed(2);
+  document.getElementById('conf-delivery').textContent  = deliveryFee > 0 ? '€' + deliveryFee.toFixed(2) : 'Free';
+  document.getElementById('conf-total').textContent     = '€' + (sub + deliveryFee).toFixed(2);
+  document.getElementById('conf-items').innerHTML = keys.map(k => {
+    const item = menuData.find(i => i.id == k);
+    return `<div class="invoice-row">
+      <div class="item-left"><span class="item-qty">${cart[k]}×</span><span>${item.name}</span></div>
+      <span style="font-weight:600;">€${(item.price * cart[k]).toFixed(2)}</span>
+    </div>`;
+  }).join('');
+
+  cart = {}; updateCartCount();
+  showToast('🎉 Order placed! Thank you!');
+  showPage('confirmation');
+  }
+  function goToTracking() {
+  const o = window.currentOrder;
+  showPage('tracking');
+  startTracking(o.orderId, o.loc);
+}
+
+function downloadPDF() {
+  const o = window.currentOrder;
+  if (!o) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const keys = Object.keys(o.cartSnapshot);
+
+  // Header
+  doc.setFillColor(26, 60, 46);
+  doc.rect(0, 0, 210, 38, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(20); doc.setFont('helvetica', 'bold');
+  doc.text('Lekker Restaurant Group', 15, 16);
+  doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+  doc.text('Invoice / Receipt', 15, 25);
+  doc.text('www.lekkerrestaurantgroup.nl', 15, 32);
+
+  // Meta box
+  doc.setFillColor(239, 246, 255);
+  doc.roundedRect(10, 44, 190, 32, 3, 3, 'F');
+  doc.setTextColor(37, 99, 235);
+  doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+  doc.text('ORDER ID',     15, 52); doc.text('DATE & TIME',   75, 52);
+  doc.text('LOCATION',    135, 52); doc.text('PAYMENT',      175, 52);
+  doc.setTextColor(26, 26, 26); doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  doc.text(o.orderId,                          15, 60);
+  doc.text(o.now.toLocaleDateString('en-GB'),  75, 60);
+  doc.text(o.loc.name,                        135, 60);
+  doc.text(o.payMethod.replace(/[^\w\s]/gi,'').trim(), 175, 60);
+
+  // Items header
+  doc.setFillColor(26, 60, 46);
+  doc.rect(10, 82, 190, 8, 'F');
+  doc.setTextColor(255,255,255); doc.setFontSize(9); doc.setFont('helvetica','bold');
+  doc.text('ITEM', 15, 88); doc.text('QTY', 140, 88); doc.text('PRICE', 170, 88);
+
+  // Items rows
+  let y = 100;
+  doc.setTextColor(26,26,26); doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  keys.forEach((k, idx) => {
+    const item = menuData.find(i => i.id == k);
+    const qty  = o.cartSnapshot[k];
+    if (idx % 2 === 0) { doc.setFillColor(245,240,232); doc.rect(10, y-6, 190, 10, 'F'); }
+    doc.text(item.name, 15, y);
+    doc.text(String(qty), 143, y);
+    doc.text('€' + (item.price * qty).toFixed(2), 170, y);
+    y += 12;
+  });
+
+  // Totals
+  y += 4;
+  doc.setDrawColor(200,200,200); doc.line(10, y, 200, y); y += 8;
+  doc.setFontSize(10);
+  doc.text('Subtotal:', 140, y); doc.text('€' + o.sub.toFixed(2), 170, y); y += 8;
+  doc.text('Delivery:', 140, y); doc.text(o.deliveryFee > 0 ? '€' + o.deliveryFee.toFixed(2) : 'Free', 170, y); y += 4;
+  doc.setDrawColor(26,60,46); doc.line(135, y, 200, y); y += 8;
+  doc.setFont('helvetica','bold'); doc.setFontSize(12);
+  doc.setTextColor(37,99,235);
+  doc.text('TOTAL:', 135, y); doc.text('€' + (o.sub + o.deliveryFee).toFixed(2), 170, y);
+
+  // Footer
+  doc.setFillColor(26,60,46);
+  doc.rect(0, 278, 210, 20, 'F');
+  doc.setTextColor(255,255,255); doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  doc.text('Thank you for ordering at Lekker Restaurant Group!', 105, 287, {align:'center'});
+  doc.text(o.loc.address, 105, 293, {align:'center'});
+
+  doc.save('Invoice_' + o.orderId + '.pdf');
+  showToast('📄 PDF Invoice downloaded!');
+  }
+
+  <!-- ======================== CONFIRMATION PAGE ======================== -->
+  <div class="page" id="page-confirmation">
+    <div class="section">
+      <div class="confirmation-card">
+        <div class="confirmation-header">
+          <div class="check-circle">✅</div>
+          <h2>Order Confirmed!</h2>
+          <p>Thank you for your order. Here is your receipt.</p>
+        </div>
+        <div class="invoice-meta">
+          <div class="invoice-meta-item"><div class="label">Order ID</div><div class="value" id="conf-orderid">—</div></div>
+          <div class="invoice-meta-item"><div class="label">Date & Time</div><div class="value" id="conf-datetime">—</div></div>
+          <div class="invoice-meta-item"><div class="label">Location</div><div class="value" id="conf-location">—</div></div>
+          <div class="invoice-meta-item"><div class="label">Payment</div><div class="value" id="conf-payment">—</div></div>
+        </div>
+        <div class="invoice-items">
+          <div class="invoice-items-title">Order Items</div>
+          <div id="conf-items"></div>
+        </div>
+        <div class="invoice-totals">
+          <div class="invoice-total-row"><span>Subtotal</span><span id="conf-sub">—</span></div>
+          <div class="invoice-total-row"><span>Delivery fee</span><span id="conf-delivery">—</span></div>
+          <div class="invoice-total-row grand"><span>Total</span><span id="conf-total">—</span></div>
+        </div>
+        <div class="confirmation-btns">
+          <button class="btn-download" onclick="downloadPDF()">📄 Download PDF Invoice</button>
+          <button class="btn-track" onclick="goToTracking()">🔍 Track My Order →</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   // ======= TRACKING =======
   const trackSteps = [
